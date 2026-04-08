@@ -72,27 +72,60 @@ HEADER_WORDS = {
     'exercice n', 'exercice n-1',
 }
 
-# Patterns de lignes parasites en tête de page
+# Patterns de lignes parasites
 PARASITE_PATTERNS = [
-    r'^tableau\s+n',           # Tableau n° 1(1/2)
-    r'^\d+\s*\(\d+/\d+\)',     # 01 (1/2)
-    r'^bilan\s*\(',            # Bilan (Actif)
-    r'^compte\s+de\s+produits',# Compte de Produits
-    r'^\(1\)',                 # notes de bas de page
-    r'^\(2\)',
-    r'^1\)\s',
-    r'^2\)\s',
-    r'^a\s+l.exclusion',
-    r'^identifiant\s+fiscal',  # ligne IF en tête
+    r'^tableau\s+n',                    # Tableau n° 1(1/2)
+    r'^\d+\s*\(\d+/\d+\)',              # 01 (1/2)
+    r'^bilan\s*\(',                     # Bilan (Actif)
+    r'^compte\s+de\s+produits',         # Compte de Produits
+    r'^\(\s*\d+\s*\)',                  # (1) (2) notes de bas de page
+    r'^\d+\s*\)',                       # 1) 2) notes
+    r'^a\s+l.exclusion',                # "A l'exclusion..."
+    r'^y\s+compris',                    # "Y compris..."
+    r'^identifiant\s+fiscal',           # ligne IF en tête de page
+    r'^if\s*:',                         # "IF: 4510887"
+    r'^i\.f\.',                         # "I.F.: ..."
+    r'^exercice\s+du',                  # "Exercice du 01/01/..."
+    r'^variation\s+de\s+stock',         # footer CPC
+    r'^achats\s+revendus\s+ou',         # footer CPC
+    r'^capital\s+personnel\s+d',        # footer passif
+    r'^b.n.ficiaire',                   # footer passif
+    r'^\(\s*\d+\s*\)\s*[a-z]',         # ( 1 ) A l'exclusion...
+    r'^modele\s+\d',                    # Modele 100
+    r'^pieces\s+annexes',               # Pièces annexes
+    r'^declaration\s+fiscale',          # Déclaration fiscale
 ]
 
+# Patterns dans les VALEURS (pas labels) qui indiquent une ligne parasite
+PARASITE_VAL_PATTERNS = [
+    r'identifiant\s+fiscal',
+    r'exercice\s+du',
+    r'^i\.f\.',
+    r'^if\s*:',
+]
+
+
 def _is_parasite(label: str) -> bool:
-    """Vrai si le label est une ligne parasite (numéro tableau, note...)."""
+    """Vrai si le label est une ligne parasite."""
     if not label: return False
     ll = label.lower().strip()
     for pat in PARASITE_PATTERNS:
         if re.match(pat, ll):
             return True
+    # Phrases longues avec références (1), (2) au milieu
+    if re.search(r'\(\s*[12]\s*\)', ll) and len(ll) > 40:
+        return True
+    return False
+
+
+def _vals_are_parasite(vals: list) -> bool:
+    """Vrai si les valeurs contiennent du texte d'en-tête (IF, date...)."""
+    for v in vals:
+        if not v: continue
+        vl = str(v).lower().strip()
+        for pat in PARASITE_VAL_PATTERNS:
+            if re.search(pat, vl):
+                return True
     return False
 
 
@@ -129,8 +162,10 @@ def clean_rows(rows: list) -> list:
         if not has_label and not has_values:
             continue
 
-        # Règle 2 : parasite
+        # Règle 2 : parasite (label ou valeurs)
         if _is_parasite(label):
+            continue
+        if _vals_are_parasite(vals):
             continue
 
         # Règle 3 : en-tête sans valeurs
